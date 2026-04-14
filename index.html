@@ -122,7 +122,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>RFID Tag</th><th>Description</th><th>Status</th><th>Timestamp</th><th></th></tr></thead>
+        <thead><tr><th>EPC / RFID Tag</th><th>Description</th><th>Status</th><th>Scan Date/Time</th><th></th></tr></thead>
         <tbody id="tableBody"></tbody>
       </table>
       <div class="empty-state" id="emptyState" style="display:none;">Upload a warehouse CSV to get started.</div>
@@ -137,8 +137,12 @@
         First row is a header
       </label>
       <div class="col-select-row">
-        <div class="field"><label>RFID Tag Column</label><select id="csvTagCol"></select></div>
+        <div class="field"><label>EPC / RFID Tag Column</label><select id="csvTagCol"></select></div>
         <div class="field"><label>Description Column (optional)</label><select id="csvDescCol"><option value="-1">— None —</option></select></div>
+      </div>
+      <div class="col-select-row">
+        <div class="field"><label>Date Column (optional)</label><select id="csvDateCol"><option value="-1">— None —</option></select></div>
+        <div class="field"><label>Time Column (optional)</label><select id="csvTimeCol"><option value="-1">— None —</option></select></div>
       </div>
       <div class="field" id="csvReasonField" style="display:none; margin-bottom:0.75rem;">
         <label style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;display:block;">Reason for all items</label>
@@ -209,10 +213,13 @@
     const preview = csvParsedRows.slice(0, Math.min(6, csvParsedRows.length));
     document.getElementById('csvInfo').textContent = `${csvParsedRows.length - (hh ? 1 : 0)} data rows · ${nc} columns detected`;
     const headers = hh ? csvParsedRows[0].map((h,i) => `Column ${i+1}: ${h}`) : csvParsedRows[0].map((_,i) => `Column ${i+1}`);
-    let autoTag = 0, autoDesc = -1;
-    if (hh) csvParsedRows[0].forEach((h,i) => { const hl = h.toLowerCase(); if (/tag|rfid|epc|id|barcode|sku|upc/i.test(hl)) autoTag = i; if (/desc|name|item|product|title|merch/i.test(hl)) autoDesc = i; });
+    let autoTag = 0, autoDesc = -1, autoDate = -1, autoTime = -1;
+    if (hh) { let epcFound = false; csvParsedRows[0].forEach((h,i) => { const hl = h.toLowerCase(); if (!epcFound && /\bepc\b/i.test(hl)) { autoTag = i; epcFound = true; } else if (!epcFound && /\b(tag|rfid|barcode|sku|upc)\b/i.test(hl)) { autoTag = i; } if (/\b(desc|name|item|product|title|merch)\b/i.test(hl)) autoDesc = i; if (/\b(date|scan.?date|day)\b/i.test(hl)) autoDate = i; if (/\b(time|scan.?time|clock)\b/i.test(hl)) autoTime = i; }); }
+    else { if (nc >= 3) autoDate = 2; if (nc >= 4) autoTime = 3; }
     document.getElementById('csvTagCol').innerHTML = headers.map((h,i) => `<option value="${i}" ${i===autoTag?'selected':''}>${h}</option>`).join('');
     document.getElementById('csvDescCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoDesc?'selected':''}>${h}</option>`).join('');
+    document.getElementById('csvDateCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoDate?'selected':''}>${h}</option>`).join('');
+    document.getElementById('csvTimeCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoTime?'selected':''}>${h}</option>`).join('');
     const tbl = document.getElementById('csvPreviewTable'); let html = '<thead><tr>';
     if (hh) { preview[0].forEach(h => html += `<th>${escHtml(h)}</th>`); html += '</tr></thead><tbody>'; preview.slice(1).forEach(r => { html += '<tr>'; r.forEach(c => html += `<td>${escHtml(c)}</td>`); html += '</tr>'; }); }
     else { preview[0].forEach((_,i) => html += `<th>Col ${i+1}</th>`); html += '</tr></thead><tbody>'; preview.forEach(r => { html += '<tr>'; r.forEach(c => html += `<td>${escHtml(c)}</td>`); html += '</tr>'; }); }
@@ -220,19 +227,26 @@
   }
 
   function confirmCsvImport() {
-    const hh = document.getElementById('csvHasHeader').checked, tc = parseInt(document.getElementById('csvTagCol').value), dc = parseInt(document.getElementById('csvDescCol').value), ds = hh ? 1 : 0;
+    const hh = document.getElementById('csvHasHeader').checked, tc = parseInt(document.getElementById('csvTagCol').value), dc = parseInt(document.getElementById('csvDescCol').value);
+    const dtc = parseInt(document.getElementById('csvDateCol').value), tmc = parseInt(document.getElementById('csvTimeCol').value), ds = hh ? 1 : 0;
     const items = [];
-    for (let i = ds; i < csvParsedRows.length; i++) { const row = csvParsedRows[i], tag = (row[tc]||'').trim().toUpperCase(); if (!tag) continue; items.push({ tag, description: dc >= 0 ? (row[dc]||'').trim() : '' }); }
+    for (let i = ds; i < csvParsedRows.length; i++) {
+      const row = csvParsedRows[i], tag = (row[tc]||'').trim().toUpperCase(); if (!tag) continue;
+      const date = dtc >= 0 ? (row[dtc]||'').trim() : '';
+      const time = tmc >= 0 ? (row[tmc]||'').trim() : '';
+      const timestamp = date && time ? `${date} ${time}` : date || time || '';
+      items.push({ tag, description: dc >= 0 ? (row[dc]||'').trim() : '', timestamp });
+    }
     if (!items.length) { alert('No valid items found. Check your column selection.'); return; }
     if (csvUploadType === 'warehouse') { state.warehouseItems = items; document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded`; }
     else if (csvUploadType === 'site') { state.siteItems = items; document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned`; }
-    else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed', ts = now(); items.forEach(item => state.adjustments.push({ tag: item.tag, description: item.description, type: adjType, reason, timestamp: ts })); }
+    else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed'; items.forEach(item => state.adjustments.push({ tag: item.tag, description: item.description, type: adjType, reason, timestamp: item.timestamp || now() })); }
     save(); closeCsvModal(); render();
   }
   function getInventory() {
     const map = new Map();
-    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, description: item.description, status: 'missing', timestamp: '' }));
-    state.siteItems.forEach(item => { if (map.has(item.tag)) map.get(item.tag).status = 'confirmed'; else map.set(item.tag, { tag: item.tag, description: item.description, status: 'confirmed', timestamp: '' }); });
+    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, description: item.description, status: 'missing', timestamp: item.timestamp || '' }));
+    state.siteItems.forEach(item => { if (map.has(item.tag)) { const e = map.get(item.tag); e.status = 'confirmed'; if (item.timestamp) e.timestamp = item.timestamp; } else map.set(item.tag, { tag: item.tag, description: item.description, status: 'confirmed', timestamp: item.timestamp || '' }); });
     state.adjustments.forEach(adj => {
       if (adj.type === 'added') { map.set(adj.tag, { tag: adj.tag, description: adj.description || map.get(adj.tag)?.description || '', status: 'added', timestamp: adj.timestamp, reason: adj.reason }); }
       else if (adj.type === 'removed') { const ex = map.get(adj.tag); if (ex) { ex.status = 'removed'; ex.timestamp = adj.timestamp; ex.reason = adj.reason; } else map.set(adj.tag, { tag: adj.tag, description: adj.description || '', status: 'removed', timestamp: adj.timestamp, reason: adj.reason }); }
@@ -272,7 +286,7 @@
   function undoAdjustment(tag) { for (let i = state.adjustments.length - 1; i >= 0; i--) { if (state.adjustments[i].tag === tag) { state.adjustments.splice(i, 1); break; } } save(); render(); }
   function exportCSV() {
     const inv = getInventory(); if (!inv.length) { alert('Nothing to export.'); return; }
-    let csv = 'RFID Tag,Description,Status,Timestamp,Reason\n';
+    let csv = 'EPC Tag,Description,Status,Scan Date/Time,Reason\n';
     inv.forEach(i => csv += `"${i.tag}","${i.description||''}","${i.status}","${i.timestamp||''}","${i.reason||''}"\n`);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `inventory-${new Date().toISOString().slice(0,10)}.csv`; a.click();
