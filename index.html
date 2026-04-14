@@ -5,16 +5,87 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RFID Inventory Tracker</title>
   <meta name="description" content="Track RFID inventory across warehouse and event sites with CSV upload, reconciliation, and real-time adjustments.">
-  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    header { background: #1e293b; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
+    header h1 { font-size: 1.3rem; color: #38bdf8; }
+    header .site-name { font-size: 0.85rem; color: #94a3b8; background: #0f172a; padding: 0.3rem 0.8rem; border-radius: 6px; }
+    .container { max-width: 1000px; margin: 0 auto; padding: 1.5rem; }
+    .upload-section { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    .upload-card { background: #1e293b; border-radius: 12px; padding: 1.2rem; text-align: center; border: 2px dashed #334155; transition: border-color 0.2s; }
+    .upload-card:hover { border-color: #38bdf8; }
+    .upload-card.loaded { border-color: #22c55e; border-style: solid; }
+    .upload-card h3 { font-size: 0.95rem; margin-bottom: 0.3rem; }
+    .upload-card p { font-size: 0.75rem; color: #64748b; margin-bottom: 0.8rem; }
+    .upload-card .count { font-size: 0.8rem; color: #22c55e; margin-top: 0.5rem; }
+    .upload-card input[type="file"] { display: none; }
+    .upload-btn { background: #334155; color: #e2e8f0; padding: 0.5rem 1rem; border: none; border-radius: 8px; cursor: pointer; font-size: 0.85rem; }
+    .upload-btn:hover { background: #475569; }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .stat-card { background: #1e293b; border-radius: 10px; padding: 1rem; text-align: center; }
+    .stat-card .value { font-size: 1.6rem; font-weight: 700; }
+    .stat-card .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 0.2rem; }
+    .stat-card.green .value { color: #22c55e; }
+    .stat-card.yellow .value { color: #eab308; }
+    .stat-card.red .value { color: #ef4444; }
+    .stat-card.blue .value { color: #38bdf8; }
+    .tabs { display: flex; gap: 0.25rem; margin-bottom: 1rem; background: #1e293b; border-radius: 10px; padding: 0.25rem; }
+    .tab { flex: 1; padding: 0.6rem; text-align: center; border: none; background: transparent; color: #94a3b8; font-size: 0.85rem; font-weight: 600; cursor: pointer; border-radius: 8px; transition: all 0.2s; }
+    .tab.active { background: #38bdf8; color: #0c4a6e; }
+    .tab .badge { display: inline-block; background: #ffffff22; padding: 0.1rem 0.45rem; border-radius: 10px; font-size: 0.7rem; margin-left: 0.3rem; }
+    .tab.active .badge { background: #0c4a6e44; }
+    .action-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+    .search-input { flex: 1; min-width: 200px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 0.55rem 0.8rem; font-size: 0.85rem; outline: none; }
+    .search-input:focus { border-color: #38bdf8; }
+    .action-btn { padding: 0.55rem 1rem; border: none; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .btn-green { background: #22c55e; color: #052e16; }
+    .btn-red { background: #ef4444; color: #fff; }
+    .btn-blue { background: #38bdf8; color: #0c4a6e; }
+    .btn-gray { background: #475569; color: #e2e8f0; }
+    .action-btn:hover { opacity: 0.85; }
+    .table-wrap { background: #1e293b; border-radius: 12px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #0f172a; padding: 0.7rem 1rem; text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+    td { padding: 0.65rem 1rem; font-size: 0.85rem; border-top: 1px solid #0f172a; }
+    tr:hover td { background: #ffffff06; }
+    .status-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+    .badge-confirmed { background: #22c55e22; color: #22c55e; }
+    .badge-missing { background: #ef444422; color: #ef4444; }
+    .badge-added { background: #38bdf822; color: #38bdf8; }
+    .badge-removed { background: #eab30822; color: #eab308; }
+    .remove-btn { background: transparent; border: none; color: #f87171; cursor: pointer; font-size: 1rem; padding: 0.2rem 0.4rem; border-radius: 4px; }
+    .remove-btn:hover { background: #7f1d1d33; }
+    .empty-state { text-align: center; color: #475569; padding: 2.5rem; font-style: italic; }
+    .log-entry { font-size: 0.75rem; color: #64748b; font-variant-numeric: tabular-nums; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: #000000aa; z-index: 100; justify-content: center; align-items: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #1e293b; border-radius: 14px; padding: 1.5rem; width: 90%; max-width: 420px; }
+    .modal h3 { margin-bottom: 1rem; font-size: 1rem; }
+    .modal .field { margin-bottom: 0.75rem; }
+    .modal .field label { display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.25rem; }
+    .modal .field input, .modal .field select { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; padding: 0.5rem 0.7rem; font-size: 0.85rem; outline: none; }
+    .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+    .modal-wide { max-width: 700px; }
+    .csv-preview-table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.8rem; }
+    .csv-preview-table th, .csv-preview-table td { padding: 0.4rem 0.6rem; border: 1px solid #334155; text-align: left; }
+    .csv-preview-table th { background: #0f172a; color: #94a3b8; font-size: 0.7rem; text-transform: uppercase; }
+    .csv-preview-table td { color: #cbd5e1; font-family: monospace; font-size: 0.78rem; }
+    .csv-preview-table tr:nth-child(even) td { background: #0f172a44; }
+    .col-select-row { display: flex; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    .col-select-row .field { flex: 1; min-width: 180px; }
+    .csv-info { font-size: 0.78rem; color: #64748b; margin-bottom: 0.75rem; }
+    .csv-has-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.82rem; color: #94a3b8; }
+    .csv-has-header input { accent-color: #38bdf8; width: 16px; height: 16px; }
+    @media (max-width: 640px) { .upload-section { grid-template-columns: 1fr; } .summary { grid-template-columns: repeat(2, 1fr); } }
+  </style>
 </head>
 <body>
   <header>
     <h1>📦 RFID Inventory Tracker</h1>
     <span class="site-name" id="siteLabel">No site set</span>
   </header>
-
   <div class="container">
-    <!-- Upload -->
     <div class="upload-section">
       <div class="upload-card" id="warehouseCard">
         <h3>🏭 Warehouse Scan</h3>
@@ -29,16 +100,12 @@
         <div class="count" id="siteCount"></div>
       </div>
     </div>
-
-    <!-- Summary -->
     <div class="summary">
       <div class="stat-card blue"><div class="value" id="totalItems">0</div><div class="label">Warehouse</div></div>
       <div class="stat-card green"><div class="value" id="confirmedItems">0</div><div class="label">Confirmed</div></div>
       <div class="stat-card red"><div class="value" id="missingItems">0</div><div class="label">Missing</div></div>
       <div class="stat-card yellow"><div class="value" id="adjustments">0</div><div class="label">Adjustments</div></div>
     </div>
-
-    <!-- Tabs -->
     <div class="tabs">
       <button class="tab active" data-tab="all" onclick="switchTab('all', this)">All <span class="badge" id="badgeAll">0</span></button>
       <button class="tab" data-tab="confirmed" onclick="switchTab('confirmed', this)">Confirmed <span class="badge" id="badgeConfirmed">0</span></button>
@@ -46,8 +113,6 @@
       <button class="tab" data-tab="added" onclick="switchTab('added', this)">Added <span class="badge" id="badgeAdded">0</span></button>
       <button class="tab" data-tab="removed" onclick="switchTab('removed', this)">Removed <span class="badge" id="badgeRemoved">0</span></button>
     </div>
-
-    <!-- Actions -->
     <div class="action-bar">
       <input class="search-input" type="text" placeholder="Search by tag ID or description..." id="searchInput" oninput="render()">
       <label class="action-btn btn-green" style="cursor:pointer;">+ Add Item Upload <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange="handleAdjustCsv('add', this)"></label>
@@ -55,8 +120,6 @@
       <button class="action-btn btn-blue" onclick="exportCSV()">Export</button>
       <button class="action-btn btn-gray" onclick="resetAll()">Reset</button>
     </div>
-
-    <!-- Table -->
     <div class="table-wrap">
       <table>
         <thead><tr><th>RFID Tag</th><th>Description</th><th>Status</th><th>Timestamp</th><th></th></tr></thead>
@@ -65,46 +128,165 @@
       <div class="empty-state" id="emptyState" style="display:none;">Upload a warehouse CSV to get started.</div>
     </div>
   </div>
-
-  <!-- CSV Preview / Column Mapping Modal -->
   <div class="modal-overlay" id="csvModalOverlay" onclick="if(event.target===this)closeCsvModal()">
     <div class="modal modal-wide">
       <h3 id="csvModalTitle">Map CSV Columns</h3>
       <div class="csv-info" id="csvInfo"></div>
-
       <label class="csv-has-header">
         <input type="checkbox" id="csvHasHeader" checked onchange="refreshCsvPreview()">
         First row is a header
       </label>
-
       <div class="col-select-row">
-        <div class="field">
-          <label>RFID Tag Column</label>
-          <select id="csvTagCol"></select>
-        </div>
-        <div class="field">
-          <label>Description Column (optional)</label>
-          <select id="csvDescCol"><option value="-1">— None —</option></select>
-        </div>
+        <div class="field"><label>RFID Tag Column</label><select id="csvTagCol"></select></div>
+        <div class="field"><label>Description Column (optional)</label><select id="csvDescCol"><option value="-1">— None —</option></select></div>
       </div>
-
       <div class="field" id="csvReasonField" style="display:none; margin-bottom:0.75rem;">
         <label style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;display:block;">Reason for all items</label>
         <select id="csvAdjustReason" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:0.5rem 0.7rem;font-size:0.85rem;outline:none;"></select>
       </div>
-
-      <div style="overflow-x:auto;">
-        <table class="csv-preview-table" id="csvPreviewTable"></table>
-      </div>
-
+      <div style="overflow-x:auto;"><table class="csv-preview-table" id="csvPreviewTable"></table></div>
       <div class="modal-actions">
         <button class="action-btn btn-gray" onclick="closeCsvModal()">Cancel</button>
         <button class="action-btn btn-green" onclick="confirmCsvImport()">Import</button>
       </div>
     </div>
   </div>
+  <script>
+  let state = JSON.parse(localStorage.getItem('rfid_state') || 'null') || { warehouseItems: [], siteItems: [], adjustments: [] };
+  let currentTab = 'all';
+  let csvParsedRows = [], csvUploadType = '';
 
-  <script src="js/csv-parser.js"></script>
-  <script src="js/app.js"></script>
+  function save() { localStorage.setItem('rfid_state', JSON.stringify(state)); }
+  function now() { return new Date().toLocaleString(); }
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function detectDelimiter(line) {
+    const t = (line.match(/\t/g)||[]).length, c = (line.match(/,/g)||[]).length, s = (line.match(/;/g)||[]).length;
+    if (t >= c && t >= s) return '\t'; if (s > c) return ';'; return ',';
+  }
+  function splitCSVRow(line, d) {
+    const cols = []; let cur = '', q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) { if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+      else { if (ch === '"') q = true; else if (ch === d) { cols.push(cur.trim()); cur = ''; } else cur += ch; }
+    }
+    cols.push(cur.trim()); return cols;
+  }
+  function parseAllRows(text) {
+    const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').trim().split('\n');
+    if (!lines.length) return [];
+    const d = detectDelimiter(lines[0]);
+    return lines.map(l => splitCSVRow(l, d));
+  }
+  function readCsvFile(file) {
+    const r = new FileReader();
+    r.onload = function(e) { csvParsedRows = parseAllRows(e.target.result); if (!csvParsedRows.length) { alert('CSV appears to be empty.'); return; } openCsvModal(); };
+    r.readAsText(file);
+  }
+  function handleFileSelect(type, input) { if (!input.files[0]) return; csvUploadType = type; readCsvFile(input.files[0]); input.value = ''; }
+  function handleAdjustCsv(mode, input) { if (!input.files[0]) return; csvUploadType = mode === 'add' ? 'bulk-add' : 'bulk-remove'; readCsvFile(input.files[0]); input.value = ''; }
+
+  function openCsvModal() {
+    const isBulk = csvUploadType === 'bulk-add' || csvUploadType === 'bulk-remove';
+    const rf = document.getElementById('csvReasonField'), rs = document.getElementById('csvAdjustReason');
+    let title = csvUploadType === 'warehouse' ? 'Map Warehouse CSV Columns' : csvUploadType === 'site' ? 'Map Event Site CSV Columns' : csvUploadType === 'bulk-add' ? 'Bulk Add Items via CSV' : 'Bulk Remove Items via CSV';
+    document.getElementById('csvModalTitle').textContent = title;
+    document.getElementById('csvHasHeader').checked = true;
+    if (isBulk) {
+      rf.style.display = 'block';
+      rs.innerHTML = csvUploadType === 'bulk-add'
+        ? '<option value="Moved from another site">Moved from another site</option><option value="New merchandise">New merchandise</option><option value="Returned item">Returned item</option><option value="Other">Other</option>'
+        : '<option value="Moved to another site">Moved to another site</option><option value="Damaged">Damaged</option><option value="Sold">Sold</option><option value="Other">Other</option>';
+    } else { rf.style.display = 'none'; }
+    refreshCsvPreview();
+    document.getElementById('csvModalOverlay').classList.add('open');
+  }
+  function closeCsvModal() { document.getElementById('csvModalOverlay').classList.remove('open'); }
+
+  function refreshCsvPreview() {
+    const hh = document.getElementById('csvHasHeader').checked, nc = csvParsedRows[0]?.length || 0;
+    const preview = csvParsedRows.slice(0, Math.min(6, csvParsedRows.length));
+    document.getElementById('csvInfo').textContent = `${csvParsedRows.length - (hh ? 1 : 0)} data rows · ${nc} columns detected`;
+    const headers = hh ? csvParsedRows[0].map((h,i) => `Column ${i+1}: ${h}`) : csvParsedRows[0].map((_,i) => `Column ${i+1}`);
+    let autoTag = 0, autoDesc = -1;
+    if (hh) csvParsedRows[0].forEach((h,i) => { const hl = h.toLowerCase(); if (/tag|rfid|epc|id|barcode|sku|upc/i.test(hl)) autoTag = i; if (/desc|name|item|product|title|merch/i.test(hl)) autoDesc = i; });
+    document.getElementById('csvTagCol').innerHTML = headers.map((h,i) => `<option value="${i}" ${i===autoTag?'selected':''}>${h}</option>`).join('');
+    document.getElementById('csvDescCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoDesc?'selected':''}>${h}</option>`).join('');
+    const tbl = document.getElementById('csvPreviewTable'); let html = '<thead><tr>';
+    if (hh) { preview[0].forEach(h => html += `<th>${escHtml(h)}</th>`); html += '</tr></thead><tbody>'; preview.slice(1).forEach(r => { html += '<tr>'; r.forEach(c => html += `<td>${escHtml(c)}</td>`); html += '</tr>'; }); }
+    else { preview[0].forEach((_,i) => html += `<th>Col ${i+1}</th>`); html += '</tr></thead><tbody>'; preview.forEach(r => { html += '<tr>'; r.forEach(c => html += `<td>${escHtml(c)}</td>`); html += '</tr>'; }); }
+    tbl.innerHTML = html + '</tbody>';
+  }
+
+  function confirmCsvImport() {
+    const hh = document.getElementById('csvHasHeader').checked, tc = parseInt(document.getElementById('csvTagCol').value), dc = parseInt(document.getElementById('csvDescCol').value), ds = hh ? 1 : 0;
+    const items = [];
+    for (let i = ds; i < csvParsedRows.length; i++) { const row = csvParsedRows[i], tag = (row[tc]||'').trim().toUpperCase(); if (!tag) continue; items.push({ tag, description: dc >= 0 ? (row[dc]||'').trim() : '' }); }
+    if (!items.length) { alert('No valid items found. Check your column selection.'); return; }
+    if (csvUploadType === 'warehouse') { state.warehouseItems = items; document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded`; }
+    else if (csvUploadType === 'site') { state.siteItems = items; document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned`; }
+    else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed', ts = now(); items.forEach(item => state.adjustments.push({ tag: item.tag, description: item.description, type: adjType, reason, timestamp: ts })); }
+    save(); closeCsvModal(); render();
+  }
+  function getInventory() {
+    const map = new Map();
+    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, description: item.description, status: 'missing', timestamp: '' }));
+    state.siteItems.forEach(item => { if (map.has(item.tag)) map.get(item.tag).status = 'confirmed'; else map.set(item.tag, { tag: item.tag, description: item.description, status: 'confirmed', timestamp: '' }); });
+    state.adjustments.forEach(adj => {
+      if (adj.type === 'added') { map.set(adj.tag, { tag: adj.tag, description: adj.description || map.get(adj.tag)?.description || '', status: 'added', timestamp: adj.timestamp, reason: adj.reason }); }
+      else if (adj.type === 'removed') { const ex = map.get(adj.tag); if (ex) { ex.status = 'removed'; ex.timestamp = adj.timestamp; ex.reason = adj.reason; } else map.set(adj.tag, { tag: adj.tag, description: adj.description || '', status: 'removed', timestamp: adj.timestamp, reason: adj.reason }); }
+    });
+    return Array.from(map.values());
+  }
+
+  function render() {
+    const inv = getInventory(), search = document.getElementById('searchInput').value.toLowerCase();
+    let filtered = inv;
+    if (currentTab !== 'all') filtered = filtered.filter(i => i.status === currentTab);
+    if (search) filtered = filtered.filter(i => i.tag.toLowerCase().includes(search) || (i.description && i.description.toLowerCase().includes(search)));
+    const confirmed = inv.filter(i => i.status === 'confirmed').length, missing = inv.filter(i => i.status === 'missing').length;
+    const added = inv.filter(i => i.status === 'added').length, removed = inv.filter(i => i.status === 'removed').length;
+    document.getElementById('totalItems').textContent = state.warehouseItems.length;
+    document.getElementById('confirmedItems').textContent = confirmed;
+    document.getElementById('missingItems').textContent = missing;
+    document.getElementById('adjustments').textContent = state.adjustments.length;
+    document.getElementById('badgeAll').textContent = inv.length;
+    document.getElementById('badgeConfirmed').textContent = confirmed;
+    document.getElementById('badgeMissing').textContent = missing;
+    document.getElementById('badgeAdded').textContent = added;
+    document.getElementById('badgeRemoved').textContent = removed;
+    const tbody = document.getElementById('tableBody'), empty = document.getElementById('emptyState');
+    if (!filtered.length) { tbody.innerHTML = ''; empty.style.display = 'block'; empty.textContent = !inv.length ? 'Upload a warehouse CSV to get started.' : 'No items match the current filter.'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = filtered.map(item => `<tr>
+      <td style="font-family:monospace;font-size:0.8rem;">${escHtml(item.tag)}</td>
+      <td>${escHtml(item.description) || '—'}</td>
+      <td><span class="status-badge badge-${item.status}">${item.status}</span></td>
+      <td class="log-entry">${item.timestamp || '—'}${item.reason ? '<br><span style="color:#94a3b8">' + escHtml(item.reason) + '</span>' : ''}</td>
+      <td>${(item.status === 'added' || item.status === 'removed') ? '<button class="remove-btn" onclick="undoAdjustment(\'' + escHtml(item.tag) + '\')" title="Undo">↩</button>' : ''}</td>
+    </tr>`).join('');
+  }
+
+  function switchTab(tab, el) { currentTab = tab; document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); render(); }
+  function undoAdjustment(tag) { for (let i = state.adjustments.length - 1; i >= 0; i--) { if (state.adjustments[i].tag === tag) { state.adjustments.splice(i, 1); break; } } save(); render(); }
+  function exportCSV() {
+    const inv = getInventory(); if (!inv.length) { alert('Nothing to export.'); return; }
+    let csv = 'RFID Tag,Description,Status,Timestamp,Reason\n';
+    inv.forEach(i => csv += `"${i.tag}","${i.description||''}","${i.status}","${i.timestamp||''}","${i.reason||''}"\n`);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `inventory-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  }
+  function resetAll() {
+    if (!confirm('This will clear all data. Are you sure?')) return;
+    state = { warehouseItems: [], siteItems: [], adjustments: [] }; save();
+    document.getElementById('warehouseCard').classList.remove('loaded'); document.getElementById('siteCard').classList.remove('loaded');
+    document.getElementById('warehouseCount').textContent = ''; document.getElementById('siteCount').textContent = ''; render();
+  }
+
+  if (state.warehouseItems.length) { document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${state.warehouseItems.length} items loaded`; }
+  if (state.siteItems.length) { document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${state.siteItems.length} items scanned`; }
+  render();
+  </script>
 </body>
 </html>
