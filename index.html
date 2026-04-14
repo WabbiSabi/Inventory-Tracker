@@ -238,8 +238,10 @@
       items.push({ tag, description: dc >= 0 ? (row[dc]||'').trim() : '', timestamp });
     }
     if (!items.length) { alert('No valid items found. Check your column selection.'); return; }
-    if (csvUploadType === 'warehouse') { state.warehouseItems = items; document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded`; }
-    else if (csvUploadType === 'site') { state.siteItems = items; document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned`; }
+    // Extract scan date+time from first data row for the upload label
+    const scanLabel = items[0]?.timestamp || '';
+    if (csvUploadType === 'warehouse') { state.warehouseItems = items; state.warehouseScanLabel = scanLabel; document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded` + (scanLabel ? ` — ${scanLabel}` : ''); }
+    else if (csvUploadType === 'site') { state.siteItems = items; state.siteScanLabel = scanLabel; document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned` + (scanLabel ? ` — ${scanLabel}` : ''); }
     else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed'; items.forEach(item => state.adjustments.push({ tag: item.tag, description: item.description, type: adjType, reason, timestamp: item.timestamp || now() })); }
     save(); closeCsvModal(); render();
   }
@@ -298,8 +300,8 @@
     document.getElementById('warehouseCount').textContent = ''; document.getElementById('siteCount').textContent = ''; render();
   }
 
-  if (state.warehouseItems.length) { document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${state.warehouseItems.length} items loaded`; }
-  if (state.siteItems.length) { document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${state.siteItems.length} items scanned`; }
+  if (state.warehouseItems.length) { document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${state.warehouseItems.length} items loaded` + (state.warehouseScanLabel ? ` — ${state.warehouseScanLabel}` : ''); }
+  if (state.siteItems.length) { document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${state.siteItems.length} items scanned` + (state.siteScanLabel ? ` — ${state.siteScanLabel}` : ''); }
   render();
   </script>
 </body>
