@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RFID Inventory Tracker</title>
+  <meta name="description" content="Track RFID inventory across warehouse and event sites with CSV upload, reconciliation, and real-time adjustments.">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header>
+    <h1>📦 RFID Inventory Tracker</h1>
+    <span class="site-name" id="siteLabel">No site set</span>
+  </header>
+
+  <div class="container">
+    <!-- Upload -->
+    <div class="upload-section">
+      <div class="upload-card" id="warehouseCard">
+        <h3>🏭 Warehouse Scan</h3>
+        <p>Upload baseline inventory CSV</p>
+        <label class="upload-btn">Choose CSV <input type="file" accept=".csv,.tsv,.txt" id="warehouseFile" onchange="handleFileSelect('warehouse', this)"></label>
+        <div class="count" id="warehouseCount"></div>
+      </div>
+      <div class="upload-card" id="siteCard">
+        <h3>📍 Event Site Scan</h3>
+        <p>Upload on-site confirmation CSV</p>
+        <label class="upload-btn">Choose CSV <input type="file" accept=".csv,.tsv,.txt" id="siteFile" onchange="handleFileSelect('site', this)"></label>
+        <div class="count" id="siteCount"></div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary">
+      <div class="stat-card blue"><div class="value" id="totalItems">0</div><div class="label">Warehouse</div></div>
+      <div class="stat-card green"><div class="value" id="confirmedItems">0</div><div class="label">Confirmed</div></div>
+      <div class="stat-card red"><div class="value" id="missingItems">0</div><div class="label">Missing</div></div>
+      <div class="stat-card yellow"><div class="value" id="adjustments">0</div><div class="label">Adjustments</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="all" onclick="switchTab('all', this)">All <span class="badge" id="badgeAll">0</span></button>
+      <button class="tab" data-tab="confirmed" onclick="switchTab('confirmed', this)">Confirmed <span class="badge" id="badgeConfirmed">0</span></button>
+      <button class="tab" data-tab="missing" onclick="switchTab('missing', this)">Missing <span class="badge" id="badgeMissing">0</span></button>
+      <button class="tab" data-tab="added" onclick="switchTab('added', this)">Added <span class="badge" id="badgeAdded">0</span></button>
+      <button class="tab" data-tab="removed" onclick="switchTab('removed', this)">Removed <span class="badge" id="badgeRemoved">0</span></button>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-bar">
+      <input class="search-input" type="text" placeholder="Search by tag ID or description..." id="searchInput" oninput="render()">
+      <label class="action-btn btn-green" style="cursor:pointer;">+ Add Item Upload <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange="handleAdjustCsv('add', this)"></label>
+      <label class="action-btn btn-red" style="cursor:pointer;">− Remove Item Upload <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange="handleAdjustCsv('remove', this)"></label>
+      <button class="action-btn btn-blue" onclick="exportCSV()">Export</button>
+      <button class="action-btn btn-gray" onclick="resetAll()">Reset</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>RFID Tag</th><th>Description</th><th>Status</th><th>Timestamp</th><th></th></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none;">Upload a warehouse CSV to get started.</div>
+    </div>
+  </div>
+
+  <!-- CSV Preview / Column Mapping Modal -->
+  <div class="modal-overlay" id="csvModalOverlay" onclick="if(event.target===this)closeCsvModal()">
+    <div class="modal modal-wide">
+      <h3 id="csvModalTitle">Map CSV Columns</h3>
+      <div class="csv-info" id="csvInfo"></div>
+
+      <label class="csv-has-header">
+        <input type="checkbox" id="csvHasHeader" checked onchange="refreshCsvPreview()">
+        First row is a header
+      </label>
+
+      <div class="col-select-row">
+        <div class="field">
+          <label>RFID Tag Column</label>
+          <select id="csvTagCol"></select>
+        </div>
+        <div class="field">
+          <label>Description Column (optional)</label>
+          <select id="csvDescCol"><option value="-1">— None —</option></select>
+        </div>
+      </div>
+
+      <div class="field" id="csvReasonField" style="display:none; margin-bottom:0.75rem;">
+        <label style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;display:block;">Reason for all items</label>
+        <select id="csvAdjustReason" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:0.5rem 0.7rem;font-size:0.85rem;outline:none;"></select>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table class="csv-preview-table" id="csvPreviewTable"></table>
+      </div>
+
+      <div class="modal-actions">
+        <button class="action-btn btn-gray" onclick="closeCsvModal()">Cancel</button>
+        <button class="action-btn btn-green" onclick="confirmCsvImport()">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/csv-parser.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
