@@ -77,6 +77,11 @@
     .csv-info { font-size: 0.78rem; color: #64748b; margin-bottom: 0.75rem; }
     .csv-has-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-size: 0.82rem; color: #94a3b8; }
     .csv-has-header input { accent-color: #38bdf8; width: 16px; height: 16px; }
+    .btn-orange { background: #f97316; color: #fff; }
+    .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: 0.75rem 1.2rem; border-radius: 10px; font-size: 0.85rem; font-weight: 600; z-index: 200; transition: opacity 0.3s; }
+    .toast-success { background: #22c55e; color: #052e16; }
+    .toast-error { background: #ef4444; color: #fff; }
+    .toast-loading { background: #38bdf8; color: #0c4a6e; }
     @media (max-width: 640px) { .upload-section { grid-template-columns: 1fr; } .summary { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
@@ -86,6 +91,10 @@
     <span class="site-name" id="siteLabel">No site set</span>
   </header>
   <div class="container">
+    <div style="margin-bottom:1rem;display:flex;gap:0.5rem;align-items:center;">
+      <label style="font-size:0.8rem;color:#94a3b8;">Site Name:</label>
+      <input type="text" id="siteInput" placeholder="e.g. Madison Square Garden" value="" oninput="updateSiteName()" style="flex:1;max-width:350px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:0.45rem 0.7rem;font-size:0.85rem;outline:none;">
+    </div>
     <div class="upload-section">
       <div class="upload-card" id="warehouseCard">
         <h3>🏭 Warehouse Scan</h3>
@@ -100,11 +109,12 @@
         <div class="count" id="siteCount"></div>
       </div>
     </div>
-    <div class="summary">
+    <div class="summary" style="grid-template-columns: repeat(5, 1fr);">
       <div class="stat-card blue"><div class="value" id="totalItems">0</div><div class="label">Warehouse</div></div>
       <div class="stat-card green"><div class="value" id="confirmedItems">0</div><div class="label">Confirmed</div></div>
       <div class="stat-card red"><div class="value" id="missingItems">0</div><div class="label">Missing</div></div>
-      <div class="stat-card yellow"><div class="value" id="adjustments">0</div><div class="label">Adjustments</div></div>
+      <div class="stat-card blue"><div class="value" id="addedItems">0</div><div class="label">Added</div></div>
+      <div class="stat-card yellow"><div class="value" id="removedItems">0</div><div class="label">Removed</div></div>
     </div>
     <div class="tabs">
       <button class="tab active" data-tab="all" onclick="switchTab('all', this)">All <span class="badge" id="badgeAll">0</span></button>
@@ -118,11 +128,12 @@
       <label class="action-btn btn-green" style="cursor:pointer;">+ Add Item Upload <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange="handleAdjustCsv('add', this)"></label>
       <label class="action-btn btn-red" style="cursor:pointer;">− Remove Item Upload <input type="file" accept=".csv,.tsv,.txt" style="display:none" onchange="handleAdjustCsv('remove', this)"></label>
       <button class="action-btn btn-blue" onclick="exportCSV()">Export</button>
+      <button class="action-btn btn-blue" onclick="uploadToS3()" id="s3Btn">☁ Send to JWO</button>
       <button class="action-btn btn-gray" onclick="resetAll()">Reset</button>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>EPC / RFID Tag</th><th>Description</th><th>Status</th><th>Scan Date/Time</th><th></th></tr></thead>
+        <thead><tr><th>EPC / RFID Tag</th><th>Current Status</th><th>Scan Date/Time</th><th>Previous Status</th></tr></thead>
         <tbody id="tableBody"></tbody>
       </table>
       <div class="empty-state" id="emptyState" style="display:none;">Upload a warehouse CSV to get started.</div>
@@ -138,14 +149,13 @@
       </label>
       <div class="col-select-row">
         <div class="field"><label>EPC / RFID Tag Column</label><select id="csvTagCol"></select></div>
-        <div class="field"><label>Description Column (optional)</label><select id="csvDescCol"><option value="-1">— None —</option></select></div>
       </div>
       <div class="col-select-row">
         <div class="field"><label>Date Column (optional)</label><select id="csvDateCol"><option value="-1">— None —</option></select></div>
         <div class="field"><label>Time Column (optional)</label><select id="csvTimeCol"><option value="-1">— None —</option></select></div>
       </div>
       <div class="field" id="csvReasonField" style="display:none; margin-bottom:0.75rem;">
-        <label style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;display:block;">Reason for all items</label>
+        <label style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.25rem;display:block;">Reason for Removal</label>
         <select id="csvAdjustReason" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:0.5rem 0.7rem;font-size:0.85rem;outline:none;"></select>
       </div>
       <div style="overflow-x:auto;"><table class="csv-preview-table" id="csvPreviewTable"></table></div>
@@ -162,7 +172,15 @@
 
   function save() { localStorage.setItem('rfid_state', JSON.stringify(state)); }
   function now() { return new Date().toLocaleString(); }
+
+  function updateSiteName() {
+    const name = document.getElementById('siteInput').value.trim();
+    state.siteName = name;
+    document.getElementById('siteLabel').textContent = name || 'No site set';
+    save();
+  }
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function cleanTag(s) { return (s||'').replace(/[^\x20-\x7E]/g,'').trim().toUpperCase(); }
 
   function detectDelimiter(line) {
     const t = (line.match(/\t/g)||[]).length, c = (line.match(/,/g)||[]).length, s = (line.match(/;/g)||[]).length;
@@ -188,8 +206,79 @@
     r.onload = function(e) { csvParsedRows = parseAllRows(e.target.result); if (!csvParsedRows.length) { alert('CSV appears to be empty.'); return; } openCsvModal(); };
     r.readAsText(file);
   }
-  function handleFileSelect(type, input) { if (!input.files[0]) return; csvUploadType = type; readCsvFile(input.files[0]); input.value = ''; }
-  function handleAdjustCsv(mode, input) { if (!input.files[0]) return; csvUploadType = mode === 'add' ? 'bulk-add' : 'bulk-remove'; readCsvFile(input.files[0]); input.value = ''; }
+  function handleFileSelect(type, input) {
+    if (!input.files[0]) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const rows = parseAllRows(e.target.result);
+      if (rows.length < 1) { alert('CSV appears to be empty.'); return; }
+      // Fixed format: no header, col 0 = EPC, col 2 = date
+      const items = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i], tag = cleanTag(row[0]);
+        if (!tag) continue;
+        const date = (row[2]||'').trim();
+        items.push({ tag, description: '', timestamp: date });
+      }
+      if (!items.length) { alert('No valid items found in CSV.'); return; }
+      const scanLabel = items[0]?.timestamp || '';
+      if (type === 'warehouse') {
+        state.warehouseItems = items; state.warehouseScanLabel = scanLabel;
+        document.getElementById('warehouseCard').classList.add('loaded');
+        document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded` + (scanLabel ? ` — ${scanLabel}` : '');
+      } else {
+        state.siteItems = items; state.siteScanLabel = scanLabel;
+        document.getElementById('siteCard').classList.add('loaded');
+        document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned` + (scanLabel ? ` — ${scanLabel}` : '');
+      }
+      save(); render();
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+  function handleAdjustCsv(mode, input) {
+    if (!input.files[0]) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const rows = parseAllRows(e.target.result);
+      if (rows.length < 1) { alert('CSV appears to be empty.'); return; }
+      csvParsedRows = rows;
+      csvUploadType = mode === 'add' ? 'bulk-add' : 'bulk-remove';
+      if (mode === 'remove') {
+        openRemoveReasonModal();
+      } else {
+        // Fixed format: col 0 = EPC, col 2 = date, no header — add immediately
+        const timestamp = now();
+        let count = 0;
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i], tag = cleanTag(row[0]);
+          if (!tag) continue;
+          const date = (row[2]||'').trim();
+          state.adjustments.push({ tag, description: '', type: 'added', reason: 'Added back to site', timestamp: date || timestamp });
+          count++;
+        }
+        if (!count) { alert('No valid items found in CSV.'); return; }
+        save(); render();
+        showToast(`✓ ${count} items added`, 'success', 3000);
+      }
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+
+  function openRemoveReasonModal() {
+    document.getElementById('csvModalTitle').textContent = 'Remove Items — Select Reason';
+    document.getElementById('csvInfo').textContent = `${csvParsedRows.length} items to remove`;
+    document.getElementById('csvHasHeader').parentElement.style.display = 'none';
+    document.querySelectorAll('.col-select-row').forEach(el => el.style.display = 'none');
+    document.getElementById('csvPreviewTable').innerHTML = '';
+    const rf = document.getElementById('csvReasonField'), rs = document.getElementById('csvAdjustReason');
+    rf.style.display = 'block';
+    rs.innerHTML = '<option value="Moved to another site">Moved to another site</option><option value="Damaged">Damaged</option><option value="Exchanged">Exchanged</option>';
+    document.getElementById('csvModalOverlay').classList.add('open');
+  }
 
   function openCsvModal() {
     const isBulk = csvUploadType === 'bulk-add' || csvUploadType === 'bulk-remove';
@@ -201,12 +290,17 @@
       rf.style.display = 'block';
       rs.innerHTML = csvUploadType === 'bulk-add'
         ? '<option value="Moved from another site">Moved from another site</option><option value="New merchandise">New merchandise</option><option value="Returned item">Returned item</option><option value="Other">Other</option>'
-        : '<option value="Moved to another site">Moved to another site</option><option value="Damaged">Damaged</option><option value="Sold">Sold</option><option value="Other">Other</option>';
+        : '<option value="Moved to another site">Moved to another site</option><option value="Damaged">Damaged</option><option value="Exchanged">Exchanged</option>';
     } else { rf.style.display = 'none'; }
     refreshCsvPreview();
     document.getElementById('csvModalOverlay').classList.add('open');
   }
-  function closeCsvModal() { document.getElementById('csvModalOverlay').classList.remove('open'); }
+  function closeCsvModal() {
+    document.getElementById('csvModalOverlay').classList.remove('open');
+    // Restore elements that may have been hidden for remove-only modal
+    document.getElementById('csvHasHeader').parentElement.style.display = '';
+    document.querySelectorAll('.col-select-row').forEach(el => el.style.display = '');
+  }
 
   function refreshCsvPreview() {
     const hh = document.getElementById('csvHasHeader').checked, nc = csvParsedRows[0]?.length || 0;
@@ -242,16 +336,35 @@
     const scanLabel = items[0]?.timestamp || '';
     if (csvUploadType === 'warehouse') { state.warehouseItems = items; state.warehouseScanLabel = scanLabel; document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded` + (scanLabel ? ` — ${scanLabel}` : ''); }
     else if (csvUploadType === 'site') { state.siteItems = items; state.siteScanLabel = scanLabel; document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned` + (scanLabel ? ` — ${scanLabel}` : ''); }
-    else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed'; items.forEach(item => state.adjustments.push({ tag: item.tag, description: item.description, type: adjType, reason, timestamp: item.timestamp || now() })); }
+    else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed';
+      if (csvUploadType === 'bulk-remove') {
+        // Fixed format: col 0 = EPC, col 2 = date
+        for (let i = 0; i < csvParsedRows.length; i++) {
+          const row = csvParsedRows[i], tag = cleanTag(row[0]);
+          if (!tag) continue;
+          const date = (row[2]||'').trim();
+          state.adjustments.push({ tag, description: '', type: 'removed', reason, timestamp: date || now() });
+        }
+      } else {
+        items.forEach(item => state.adjustments.push({ tag: item.tag, description: '', type: adjType, reason, timestamp: item.timestamp || now() }));
+      }
+    }
     save(); closeCsvModal(); render();
   }
   function getInventory() {
     const map = new Map();
-    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, description: item.description, status: 'missing', timestamp: item.timestamp || '' }));
-    state.siteItems.forEach(item => { if (map.has(item.tag)) { const e = map.get(item.tag); e.status = 'confirmed'; if (item.timestamp) e.timestamp = item.timestamp; } else map.set(item.tag, { tag: item.tag, description: item.description, status: 'confirmed', timestamp: item.timestamp || '' }); });
+    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, status: 'missing', prevStatus: '', timestamp: item.timestamp || '' }));
+    state.siteItems.forEach(item => { if (map.has(item.tag)) { const e = map.get(item.tag); e.status = 'confirmed'; if (item.timestamp) e.timestamp = item.timestamp; } else map.set(item.tag, { tag: item.tag, status: 'confirmed', prevStatus: '', timestamp: item.timestamp || '' }); });
     state.adjustments.forEach(adj => {
-      if (adj.type === 'added') { map.set(adj.tag, { tag: adj.tag, description: adj.description || map.get(adj.tag)?.description || '', status: 'added', timestamp: adj.timestamp, reason: adj.reason }); }
-      else if (adj.type === 'removed') { const ex = map.get(adj.tag); if (ex) { ex.status = 'removed'; ex.timestamp = adj.timestamp; ex.reason = adj.reason; } else map.set(adj.tag, { tag: adj.tag, description: adj.description || '', status: 'removed', timestamp: adj.timestamp, reason: adj.reason }); }
+      if (adj.type === 'added') {
+        const existing = map.get(adj.tag);
+        const prev = existing ? existing.status : '';
+        map.set(adj.tag, { tag: adj.tag, status: 'added', prevStatus: prev, timestamp: adj.timestamp, reason: adj.reason });
+      } else if (adj.type === 'removed') {
+        const ex = map.get(adj.tag);
+        if (ex) { ex.prevStatus = ex.status; ex.status = 'removed'; ex.timestamp = adj.timestamp; ex.reason = adj.reason; }
+        else map.set(adj.tag, { tag: adj.tag, status: 'removed', prevStatus: '', timestamp: adj.timestamp, reason: adj.reason });
+      }
     });
     return Array.from(map.values());
   }
@@ -266,7 +379,8 @@
     document.getElementById('totalItems').textContent = state.warehouseItems.length;
     document.getElementById('confirmedItems').textContent = confirmed;
     document.getElementById('missingItems').textContent = missing;
-    document.getElementById('adjustments').textContent = state.adjustments.length;
+    document.getElementById('addedItems').textContent = added;
+    document.getElementById('removedItems').textContent = removed;
     document.getElementById('badgeAll').textContent = inv.length;
     document.getElementById('badgeConfirmed').textContent = confirmed;
     document.getElementById('badgeMissing').textContent = missing;
@@ -277,10 +391,9 @@
     empty.style.display = 'none';
     tbody.innerHTML = filtered.map(item => `<tr>
       <td style="font-family:monospace;font-size:0.8rem;">${escHtml(item.tag)}</td>
-      <td>${escHtml(item.description) || '—'}</td>
       <td><span class="status-badge badge-${item.status}">${item.status}</span></td>
       <td class="log-entry">${item.timestamp || '—'}${item.reason ? '<br><span style="color:#94a3b8">' + escHtml(item.reason) + '</span>' : ''}</td>
-      <td>${(item.status === 'added' || item.status === 'removed') ? '<button class="remove-btn" onclick="undoAdjustment(\'' + escHtml(item.tag) + '\')" title="Undo">↩</button>' : ''}</td>
+      <td>${item.prevStatus ? '<span class="status-badge badge-' + item.prevStatus + '">' + item.prevStatus + '</span>' : '—'}</td>
     </tr>`).join('');
   }
 
@@ -288,8 +401,8 @@
   function undoAdjustment(tag) { for (let i = state.adjustments.length - 1; i >= 0; i--) { if (state.adjustments[i].tag === tag) { state.adjustments.splice(i, 1); break; } } save(); render(); }
   function exportCSV() {
     const inv = getInventory(); if (!inv.length) { alert('Nothing to export.'); return; }
-    let csv = 'EPC Tag,Description,Status,Scan Date/Time,Reason\n';
-    inv.forEach(i => csv += `"${i.tag}","${i.description||''}","${i.status}","${i.timestamp||''}","${i.reason||''}"\n`);
+    let csv = 'EPC Tag,Current Status,Previous Status,Scan Date/Time,Reason\n';
+    inv.forEach(i => csv += `"${i.tag}","${i.status}","${i.prevStatus||''}","${i.timestamp||''}","${i.reason||''}"\n`);
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `inventory-${new Date().toISOString().slice(0,10)}.csv`; a.click();
   }
@@ -300,6 +413,74 @@
     document.getElementById('warehouseCount').textContent = ''; document.getElementById('siteCount').textContent = ''; render();
   }
 
+  // ── Toast notifications ──
+  function showToast(msg, type, duration) {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    if (duration) setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, duration);
+    return el;
+  }
+
+  // ── S3 Upload via Pre-signed URL ──
+  // ⚠️ REPLACE THIS with your actual API Gateway endpoint
+  const S3_PRESIGN_API = 'https://lga2kgb0b6.execute-api.us-east-2.amazonaws.com/get-upload-url';
+
+  async function uploadToS3() {
+    // Validate that scans have been uploaded
+    if (!state.warehouseItems.length && !state.siteItems.length) {
+      alert('Please upload a Warehouse Scan or Event Site Scan CSV before uploading to S3.');
+      return;
+    }
+    const inv = getInventory();
+    if (!inv.length) { alert('Nothing to upload.'); return; }
+
+    // Confirm with user
+    const parts = [];
+    if (state.warehouseItems.length) parts.push(`Warehouse: ${state.warehouseItems.length} items`);
+    if (state.siteItems.length) parts.push(`Event Site: ${state.siteItems.length} items`);
+    if (state.adjustments.length) parts.push(`Adjustments: ${state.adjustments.length}`);
+    if (!confirm(`Send to JWO?\n\n${parts.join('\n')}\nTotal: ${inv.length} items`)) return;
+
+    // Build CSV
+    let csv = 'EPC Tag,Current Status,Previous Status,Scan Date/Time,Reason\n';
+    inv.forEach(i => csv += `"${i.tag}","${i.status}","${i.prevStatus||''}","${i.timestamp||''}","${i.reason||''}"\n`);
+
+    const siteName = (state.siteName || 'unknown-site').replace(/[^a-zA-Z0-9-_ ]/g, '').replace(/\s+/g, '-').toLowerCase();
+    const fileName = `${siteName}_inventory-${new Date().toISOString().slice(0,10)}_${Date.now()}.csv`;
+    const toast = showToast('Sending to JWO...', 'loading');
+
+    try {
+      // Step 1: Get pre-signed URL from your API Gateway + Lambda
+      const res = await fetch(S3_PRESIGN_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName, contentType: 'text/csv' })
+      });
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
+      const { uploadUrl } = await res.json();
+
+      // Step 2: Upload CSV directly to S3 using the pre-signed URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/csv' },
+        body: csv
+      });
+      if (!uploadRes.ok) throw new Error(`S3 upload returned ${uploadRes.status}`);
+
+      toast.remove();
+      showToast(`✓ Sent to JWO: ${fileName}`, 'success', 4000);
+    } catch (err) {
+      toast.remove();
+      showToast(`Send failed: ${err.message}`, 'error', 5000);
+      console.error('S3 upload error:', err);
+    }
+  }
+
+  if (state.siteName) { document.getElementById('siteInput').value = state.siteName; document.getElementById('siteLabel').textContent = state.siteName; }
   if (state.warehouseItems.length) { document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${state.warehouseItems.length} items loaded` + (state.warehouseScanLabel ? ` — ${state.warehouseScanLabel}` : ''); }
   if (state.siteItems.length) { document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${state.siteItems.length} items scanned` + (state.siteScanLabel ? ` — ${state.siteScanLabel}` : ''); }
   render();
