@@ -309,11 +309,10 @@
     const preview = csvParsedRows.slice(0, Math.min(6, csvParsedRows.length));
     document.getElementById('csvInfo').textContent = `${csvParsedRows.length - (hh ? 1 : 0)} data rows · ${nc} columns detected`;
     const headers = hh ? csvParsedRows[0].map((h,i) => `Column ${i+1}: ${h}`) : csvParsedRows[0].map((_,i) => `Column ${i+1}`);
-    let autoTag = 0, autoDesc = -1, autoDate = -1, autoTime = -1;
-    if (hh) { let epcFound = false; csvParsedRows[0].forEach((h,i) => { const hl = h.toLowerCase(); if (!epcFound && /\bepc\b/i.test(hl)) { autoTag = i; epcFound = true; } else if (!epcFound && /\b(tag|rfid|barcode|sku|upc)\b/i.test(hl)) { autoTag = i; } if (/\b(desc|name|item|product|title|merch)\b/i.test(hl)) autoDesc = i; if (/\b(date|scan.?date|day)\b/i.test(hl)) autoDate = i; if (/\b(time|scan.?time|clock)\b/i.test(hl)) autoTime = i; }); }
+    let autoTag = 0, autoDate = -1, autoTime = -1;
+    if (hh) { let epcFound = false; csvParsedRows[0].forEach((h,i) => { const hl = h.toLowerCase(); if (!epcFound && /\bepc\b/i.test(hl)) { autoTag = i; epcFound = true; } else if (!epcFound && /\b(tag|rfid|barcode|sku|upc)\b/i.test(hl)) { autoTag = i; } if (/\b(date|scan.?date|day)\b/i.test(hl)) autoDate = i; if (/\b(time|scan.?time|clock)\b/i.test(hl)) autoTime = i; }); }
     else { if (nc >= 3) autoDate = 2; if (nc >= 4) autoTime = 3; }
     document.getElementById('csvTagCol').innerHTML = headers.map((h,i) => `<option value="${i}" ${i===autoTag?'selected':''}>${h}</option>`).join('');
-    document.getElementById('csvDescCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoDesc?'selected':''}>${h}</option>`).join('');
     document.getElementById('csvDateCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoDate?'selected':''}>${h}</option>`).join('');
     document.getElementById('csvTimeCol').innerHTML = '<option value="-1">— None —</option>' + headers.map((h,i) => `<option value="${i}" ${i===autoTime?'selected':''}>${h}</option>`).join('');
     const tbl = document.getElementById('csvPreviewTable'); let html = '<thead><tr>';
