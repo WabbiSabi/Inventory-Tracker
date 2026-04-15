@@ -323,7 +323,24 @@
   }
 
   function confirmCsvImport() {
-    const hh = document.getElementById('csvHasHeader').checked, tc = parseInt(document.getElementById('csvTagCol').value), dc = parseInt(document.getElementById('csvDescCol').value);
+    // Bulk-remove uses fixed format — handle separately
+    if (csvUploadType === 'bulk-remove') {
+      const reason = document.getElementById('csvAdjustReason').value;
+      let count = 0;
+      for (let i = 0; i < csvParsedRows.length; i++) {
+        const row = csvParsedRows[i], tag = cleanTag(row[0]);
+        if (!tag) continue;
+        const date = (row[2]||'').trim();
+        state.adjustments.push({ tag, type: 'removed', reason, timestamp: date || now() });
+        count++;
+      }
+      if (!count) { alert('No valid items found in CSV.'); return; }
+      save(); closeCsvModal(); render();
+      showToast(`✓ ${count} items removed`, 'success', 3000);
+      return;
+    }
+
+    const hh = document.getElementById('csvHasHeader').checked, tc = parseInt(document.getElementById('csvTagCol').value);
     const dtc = parseInt(document.getElementById('csvDateCol').value), tmc = parseInt(document.getElementById('csvTimeCol').value), ds = hh ? 1 : 0;
     const items = [];
     for (let i = ds; i < csvParsedRows.length; i++) {
@@ -331,26 +348,12 @@
       const date = dtc >= 0 ? (row[dtc]||'').trim() : '';
       const time = tmc >= 0 ? (row[tmc]||'').trim() : '';
       const timestamp = date && time ? `${date} ${time}` : date || time || '';
-      items.push({ tag, description: dc >= 0 ? (row[dc]||'').trim() : '', timestamp });
+      items.push({ tag, timestamp });
     }
     if (!items.length) { alert('No valid items found. Check your column selection.'); return; }
-    // Extract scan date+time from first data row for the upload label
     const scanLabel = items[0]?.timestamp || '';
     if (csvUploadType === 'warehouse') { state.warehouseItems = items; state.warehouseScanLabel = scanLabel; document.getElementById('warehouseCard').classList.add('loaded'); document.getElementById('warehouseCount').textContent = `✓ ${items.length} items loaded` + (scanLabel ? ` — ${scanLabel}` : ''); }
     else if (csvUploadType === 'site') { state.siteItems = items; state.siteScanLabel = scanLabel; document.getElementById('siteCard').classList.add('loaded'); document.getElementById('siteCount').textContent = `✓ ${items.length} items scanned` + (scanLabel ? ` — ${scanLabel}` : ''); }
-    else { const reason = document.getElementById('csvAdjustReason').value, adjType = csvUploadType === 'bulk-add' ? 'added' : 'removed';
-      if (csvUploadType === 'bulk-remove') {
-        // Fixed format: col 0 = EPC, col 2 = date
-        for (let i = 0; i < csvParsedRows.length; i++) {
-          const row = csvParsedRows[i], tag = cleanTag(row[0]);
-          if (!tag) continue;
-          const date = (row[2]||'').trim();
-          state.adjustments.push({ tag, description: '', type: 'removed', reason, timestamp: date || now() });
-        }
-      } else {
-        items.forEach(item => state.adjustments.push({ tag: item.tag, description: '', type: adjType, reason, timestamp: item.timestamp || now() }));
-      }
-    }
     save(); closeCsvModal(); render();
   }
   function getInventory() {
