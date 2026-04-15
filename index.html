@@ -133,7 +133,7 @@
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>EPC / RFID Tag</th><th>Current Status</th><th>Scan Date/Time</th><th>Actions</th></tr></thead>
+        <thead><tr><th>EPC / RFID Tag</th><th>Shipment from Warehouse Match</th><th>Scan Date/Time</th><th>Actions</th></tr></thead>
         <tbody id="tableBody"></tbody>
       </table>
       <div class="empty-state" id="emptyState" style="display:none;">Upload a warehouse CSV to get started.</div>
@@ -355,18 +355,12 @@
   }
   function getInventory() {
     const map = new Map();
-    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, status: 'missing', actions: [], timestamp: item.timestamp || '' }));
-    state.siteItems.forEach(item => { if (map.has(item.tag)) { const e = map.get(item.tag); e.status = 'confirmed'; if (item.timestamp) e.timestamp = item.timestamp; } else map.set(item.tag, { tag: item.tag, status: 'confirmed', actions: [], timestamp: item.timestamp || '' }); });
+    state.warehouseItems.forEach(item => map.set(item.tag, { tag: item.tag, match: 'missing', actions: [], timestamp: item.timestamp || '' }));
+    state.siteItems.forEach(item => { if (map.has(item.tag)) { const e = map.get(item.tag); e.match = 'confirmed'; if (item.timestamp) e.timestamp = item.timestamp; } else map.set(item.tag, { tag: item.tag, match: 'confirmed', actions: [], timestamp: item.timestamp || '' }); });
     state.adjustments.forEach(adj => {
-      const existing = map.get(adj.tag);
-      if (existing && existing.status === 'confirmed') return;
-      if (adj.type === 'added') {
-        if (existing) { existing.actions.push({ type: 'added', reason: adj.reason, timestamp: adj.timestamp }); existing.status = 'added'; existing.timestamp = adj.timestamp; existing.reason = adj.reason; }
-        else map.set(adj.tag, { tag: adj.tag, status: 'added', actions: [{ type: 'added', reason: adj.reason, timestamp: adj.timestamp }], timestamp: adj.timestamp, reason: adj.reason });
-      } else if (adj.type === 'removed') {
-        if (existing) { existing.actions.push({ type: 'removed', reason: adj.reason, timestamp: adj.timestamp }); existing.status = 'removed'; existing.timestamp = adj.timestamp; existing.reason = adj.reason; }
-        else map.set(adj.tag, { tag: adj.tag, status: 'removed', actions: [{ type: 'removed', reason: adj.reason, timestamp: adj.timestamp }], timestamp: adj.timestamp, reason: adj.reason });
-      }
+      let existing = map.get(adj.tag);
+      if (!existing) { existing = { tag: adj.tag, match: '—', actions: [], timestamp: '' }; map.set(adj.tag, existing); }
+      existing.actions.push({ type: adj.type, reason: adj.reason, timestamp: adj.timestamp });
     });
     return Array.from(map.values());
   }
@@ -374,10 +368,14 @@
   function render() {
     const inv = getInventory(), search = document.getElementById('searchInput').value.toLowerCase();
     let filtered = inv;
-    if (currentTab !== 'all') filtered = filtered.filter(i => i.status === currentTab);
-    if (search) filtered = filtered.filter(i => i.tag.toLowerCase().includes(search) || (i.description && i.description.toLowerCase().includes(search)));
-    const confirmed = inv.filter(i => i.status === 'confirmed').length, missing = inv.filter(i => i.status === 'missing').length;
-    const added = inv.filter(i => i.status === 'added').length, removed = inv.filter(i => i.status === 'removed').length;
+    if (currentTab !== 'all') {
+      if (currentTab === 'added') filtered = filtered.filter(i => i.actions.some(a => a.type === 'added'));
+      else if (currentTab === 'removed') filtered = filtered.filter(i => i.actions.some(a => a.type === 'removed'));
+      else filtered = filtered.filter(i => i.match === currentTab);
+    }
+    if (search) filtered = filtered.filter(i => i.tag.toLowerCase().includes(search));
+    const confirmed = inv.filter(i => i.match === 'confirmed').length, missing = inv.filter(i => i.match === 'missing').length;
+    const added = inv.filter(i => i.actions.some(a => a.type === 'added')).length, removed = inv.filter(i => i.actions.some(a => a.type === 'removed')).length;
     document.getElementById('totalItems').textContent = state.warehouseItems.length;
     document.getElementById('confirmedItems').textContent = confirmed;
     document.getElementById('missingItems').textContent = missing;
@@ -397,7 +395,7 @@
         : '—';
       return `<tr>
       <td style="font-family:monospace;font-size:0.8rem;">${escHtml(item.tag)}</td>
-      <td><span class="status-badge badge-${item.status}">${item.status}</span></td>
+      <td><span class="status-badge badge-${item.match}">${item.match}</span></td>
       <td class="log-entry">${item.timestamp || '—'}</td>
       <td class="log-entry">${actionsHtml}</td>
     </tr>`;
@@ -408,8 +406,8 @@
   function undoAdjustment(tag) { for (let i = state.adjustments.length - 1; i >= 0; i--) { if (state.adjustments[i].tag === tag) { state.adjustments.splice(i, 1); break; } } save(); render(); }
   function exportCSV() {
     const inv = getInventory(); if (!inv.length) { alert('Nothing to export.'); return; }
-    let csv = 'EPC Tag,Current Status,Scan Date/Time,Actions\n';
-    inv.forEach(i => { const acts = i.actions.map(a => `${a.type}: ${a.reason||''}`).join(' | '); csv += `"${i.tag}","${i.status}","${i.timestamp||''}","${acts}"\n`; });
+    let csv = 'EPC Tag,Shipment from Warehouse Match,Scan Date/Time,Actions\n';
+    inv.forEach(i => { const acts = i.actions.map(a => `${a.type}: ${a.reason||''}`).join(' | '); csv += `"${i.tag}","${i.match}","${i.timestamp||''}","${acts}"\n`; });
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     a.download = `inventory-${new Date().toISOString().slice(0,10)}.csv`; a.click();
   }
@@ -453,8 +451,8 @@
     if (!confirm(`Send to JWO?\n\n${parts.join('\n')}\nTotal: ${inv.length} items`)) return;
 
     // Build CSV
-    let csv = 'EPC Tag,Current Status,Scan Date/Time,Actions\n';
-    inv.forEach(i => { const acts = i.actions.map(a => `${a.type}: ${a.reason||''}`).join(' | '); csv += `"${i.tag}","${i.status}","${i.timestamp||''}","${acts}"\n`; });
+    let csv = 'EPC Tag,Shipment from Warehouse Match,Scan Date/Time,Actions\n';
+    inv.forEach(i => { const acts = i.actions.map(a => `${a.type}: ${a.reason||''}`).join(' | '); csv += `"${i.tag}","${i.match}","${i.timestamp||''}","${acts}"\n`; });
 
     const siteName = (state.siteName || 'unknown-site').replace(/[^a-zA-Z0-9-_ ]/g, '').replace(/\s+/g, '-').toLowerCase();
     const fileName = `${siteName}_inventory-${new Date().toISOString().slice(0,10)}_${Date.now()}.csv`;
